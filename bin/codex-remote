@@ -10,6 +10,8 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+node "$ROOT_DIR/dist/access.js" install-skill --if-missing --quiet >/dev/null 2>&1 || true
+
 CODEX_APP_SERVER_URL="${CODEX_APP_SERVER_URL:-ws://127.0.0.1:17345}"
 CODEX_APP_SERVER_HEALTH_URL="${CODEX_APP_SERVER_HEALTH_URL:-http://127.0.0.1:17345}"
 CODEX_TELEGRAM_STATE_DIR="${CODEX_TELEGRAM_STATE_DIR:-$HOME/.codex/telegram-bridge}"

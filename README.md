@@ -35,6 +35,11 @@ source of truth.
 npm install -g codex-telegram-bridge
 ```
 
+The first `codex-tg` or `codex-remote` run installs a small optional Codex skill
+under `~/.codex/skills/codex-telegram-notify` when it is missing. The skill
+teaches future Codex sessions to use `codex-tg notify` instead of reading
+Telegram bot tokens or calling the Telegram Bot API directly.
+
 ### Using nvm
 
 `codex-telegram-bridge` works with `nvm`, but npm global packages are installed
@@ -68,6 +73,12 @@ Save your Telegram bot token:
 
 ```sh
 codex-tg token
+```
+
+You can also install or refresh the optional Codex skill explicitly:
+
+```sh
+codex-tg install-skill
 ```
 
 Start Codex from the project directory you want Codex to work in:
@@ -126,6 +137,15 @@ codex-tg notify "Codex finished the local task."
 
 This queues a local notification for the bridge process. It does not read the
 Telegram bot token or call the Telegram Bot API from the caller process.
+
+For Codex agents to choose this command automatically, make sure the optional
+skill is installed:
+
+```sh
+codex-tg install-skill
+```
+
+Then restart your Codex session so the new skill is discovered.
 
 ## Configuration
 

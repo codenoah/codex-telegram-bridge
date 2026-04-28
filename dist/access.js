@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defaultAccess, loadDotEnv, normalizeCwd, paths, pruneExpired, readAccess, readBridgeState, writeAccess, writeBridgeState, } from "./common.js";
 loadDotEnv();
 const args = process.argv.slice(2);
 const command = args[0] ?? "status";
+const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const quiet = args.includes("--quiet");
+const ifMissing = args.includes("--if-missing");
 function save(access = readAccess()) {
     writeAccess(access);
 }
@@ -65,6 +69,23 @@ switch (command) {
         renameSync(tmp, file);
         console.log(`queued notification ${id}`);
         console.log("the running Telegram bridge will deliver it to allowlisted chats");
+        break;
+    }
+    case "install-skill": {
+        const codexHome = process.env.CODEX_HOME ?? join(process.env.HOME ?? "", ".codex");
+        if (!codexHome || codexHome === ".codex")
+            throw new Error("HOME is required to install the Codex skill");
+        const source = join(packageRoot, "skills", "codex-telegram-notify", "SKILL.md");
+        const targetDir = join(codexHome, "skills", "codex-telegram-notify");
+        const target = join(targetDir, "SKILL.md");
+        if (ifMissing && existsSync(target))
+            break;
+        mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+        copyFileSync(source, target);
+        if (!quiet) {
+            console.log(`installed Codex skill: ${target}`);
+            console.log("restart Codex sessions to make the new skill discoverable");
+        }
         break;
     }
     case "pair": {

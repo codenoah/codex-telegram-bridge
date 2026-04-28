@@ -1,6 +1,6 @@
 {
   "name": "codex-telegram-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local Telegram bridge for continuing OpenAI Codex app-server threads from your phone.",
   "license": "MIT",
   "type": "module",
@@ -36,6 +36,7 @@
   },
   "files": [
     "bin/",
+    "skills/",
     "dist/",
     "src/",
     "README.md",

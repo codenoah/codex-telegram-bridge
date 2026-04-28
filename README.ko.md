@@ -36,6 +36,11 @@ pane을 더 오래 유지하기 좋습니다.
 npm install -g codex-telegram-bridge
 ```
 
+처음 `codex-tg` 또는 `codex-remote`를 실행하면 작은 선택적 Codex skill이
+없을 때만 `~/.codex/skills/codex-telegram-notify` 아래에 자동 설치됩니다. 이
+skill은 앞으로 Codex 세션이 Telegram bot token을 읽거나 Telegram Bot API를
+직접 호출하지 않고 `codex-tg notify`를 사용하도록 알려줍니다.
+
 ### nvm 사용 시
 
 `codex-telegram-bridge`는 `nvm` 환경에서도 동작합니다. 다만 npm global package는
@@ -69,6 +74,13 @@ Telegram bot token을 저장합니다.
 
 ```sh
 codex-tg token
+```
+
+선택적 Codex skill은 `codex-tg` 또는 `codex-remote` 첫 실행 때 자동 설치됩니다.
+필요하면 직접 설치하거나 갱신할 수도 있습니다.
+
+```sh
+codex-tg install-skill
 ```
 
 Codex가 작업할 프로젝트 디렉터리에서 Codex를 시작합니다.
@@ -129,6 +141,14 @@ codex-tg notify "Codex 작업이 끝났습니다."
 이 명령은 bridge 프로세스가 처리할 로컬 알림을 queue에 넣습니다. 호출한
 프로세스가 Telegram bot token을 읽거나 Telegram Bot API를 직접 호출하지
 않습니다.
+
+Codex agent가 이 명령을 자동으로 선택하게 하려면 다음 명령을 실행하세요.
+
+```sh
+codex-tg install-skill
+```
+
+설치 후 새 Codex 세션을 시작하면 skill이 발견됩니다.
 
 ## 설정
 
