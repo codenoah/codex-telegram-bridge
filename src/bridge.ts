@@ -512,7 +512,7 @@ async function finishTurn(turn: TelegramTurn, status: string, error: any): Promi
   lastTurnReport = buildTurnReport(turn);
   if (status !== "completed") {
     const message = status === "interrupted" && turn.cancelRequested
-      ? "Cancelled."
+      ? "Stopped current Codex turn."
       : error?.message ? `${status}: ${error.message}` : `Turn ${status}`;
     const progress = renderProgress(turn);
     await telegram.editMessageText(
@@ -559,7 +559,7 @@ async function finishTurn(turn: TelegramTurn, status: string, error: any): Promi
 function renderWorkingTurn(turn: TelegramTurn): string {
   const progress = renderProgress(turn);
   const parts = [
-    turn.cancelRequested ? "Cancelling Codex turn..." : "Codex is working...",
+    turn.cancelRequested ? "Stopping current Codex turn..." : "Codex is working...",
     `cwd: ${basename(turn.cwd) || turn.cwd}`,
     `thread: ${shortId(turn.threadId)}`,
     `turn: ${shortId(turn.turnId)}`,
@@ -575,7 +575,7 @@ function turnReplyMarkupExtra(turn: TelegramTurn): JsonObject {
   return {
     reply_markup: turn.cancelRequested
       ? { inline_keyboard: [] }
-      : { inline_keyboard: [[{ text: "Cancel", callback_data: `cx:${turn.turnId}` }]] },
+      : { inline_keyboard: [[{ text: "Stop current turn", callback_data: `cx:${turn.turnId}` }]] },
   };
 }
 
@@ -590,7 +590,7 @@ function renderFinalTurn(turn: TelegramTurn): string {
   const parts = [];
   if (progress) parts.push(progress);
   if (changes) parts.push(changes);
-  parts.push(`Answer:\n${answer}`);
+  parts.push(answer);
   return parts.join("\n\n");
 }
 
@@ -871,34 +871,34 @@ async function cancelActiveTurn(chatId: string): Promise<void> {
     if (bridgeState.activeThreadId && bridgeState.activeTurnId) {
       try {
         await interruptTurn(bridgeState.activeThreadId, bridgeState.activeTurnId);
-        await telegram.sendMessage(chatId, "Cancellation requested.");
+        await telegram.sendMessage(chatId, "Stop requested for the current Codex turn.");
       } catch (error) {
-        await telegram.sendMessage(chatId, `Cancel failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+        await telegram.sendMessage(chatId, `Stop failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
       }
       return;
     }
-    await telegram.sendMessage(chatId, "No active Codex turn to cancel.");
+    await telegram.sendMessage(chatId, "No active Codex turn to stop.");
     return;
   }
 
   if (turn.cancelRequested) {
-    await telegram.sendMessage(chatId, "Cancellation is already in progress.");
+    await telegram.sendMessage(chatId, "Stop is already in progress.");
     return;
   }
 
   try {
     await requestTurnInterrupt(turn);
-    await telegram.sendMessage(chatId, "Cancellation requested.");
+    await telegram.sendMessage(chatId, "Stop requested for the current Codex turn.");
   } catch (error) {
     turn.cancelRequested = false;
     await updateTurnMessage(turn, true);
-    await telegram.sendMessage(chatId, `Cancel failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+    await telegram.sendMessage(chatId, `Stop failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
   }
 }
 
 async function changeCwd(chatId: string, rawPath: string): Promise<void> {
   if (bridgeState.activeTurnId) {
-    await telegram.sendMessage(chatId, "Cannot change cwd while Codex is working. Cancel or wait for the turn to finish first.");
+    await telegram.sendMessage(chatId, "Cannot change cwd while Codex is working. Stop the current turn or wait for it to finish first.");
     return;
   }
 
@@ -1074,7 +1074,7 @@ async function promptActiveTurnChoice(chatId: string, messageId: number, text: s
         inline_keyboard: [
           [{ text: "Add to Turn", callback_data: `st:${key}:a` }],
           [
-            { text: "Cancel Current", callback_data: `st:${key}:c` },
+            { text: "Stop Current Turn", callback_data: `st:${key}:c` },
             { text: "Discard", callback_data: `st:${key}:d` },
           ],
         ],
@@ -1106,7 +1106,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       "Send any message to continue the active Codex app-server thread.",
       "/status shows the active thread.",
       "/new starts a fresh thread.",
-      "/cancel interrupts the active turn.",
+      "/cancel stops the current Codex turn.",
       "/cwd <path> changes the project directory for the next thread.",
       "/logs shows recent progress.",
       "/diff [path] shows the last turn diff or current git diff.",
@@ -1198,22 +1198,23 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     return;
   }
 
-  const status = await telegram.sendMessage(chatId, "Codex is working...");
-  const statusMessage = status[0];
-
   await codex.connect();
   const threadId = await codex.ensureThread(bridgeState);
 
   if (bridgeState.activeTurnId) {
     const activeTurn = telegramTurns.get(bridgeState.activeTurnId);
     if (activeTurn?.cancelRequested) {
-      await telegram.editMessageText(chatId, statusMessage.message_id, "Cancellation is still in progress. Try again in a moment.");
+      await telegram.sendMessage(chatId, "Stop is still in progress. Try again in a moment.");
       return;
     }
 
-    await promptActiveTurnChoice(chatId, statusMessage.message_id, text, threadId, bridgeState.activeTurnId);
+    const choiceMessage = (await telegram.sendMessage(chatId, "Codex is already working."))[0];
+    await promptActiveTurnChoice(chatId, choiceMessage.message_id, text, threadId, bridgeState.activeTurnId);
     return;
   }
+
+  const status = await telegram.sendMessage(chatId, "Codex is working...");
+  const statusMessage = status[0];
 
   const response = await codex.request("turn/start", {
     threadId,
@@ -1271,20 +1272,20 @@ async function handleCallback(update: TelegramUpdate): Promise<void> {
     }
 
     if (action === "c") {
-      await telegram.answerCallbackQuery(callback.id, "Cancelling current turn...").catch(() => {});
+      await telegram.answerCallbackQuery(callback.id, "Stopping current turn...").catch(() => {});
       const turn = telegramTurns.get(pending.turnId);
       try {
         if (turn) await requestTurnInterrupt(turn);
         else await interruptTurn(pending.threadId, pending.turnId);
         if (messageId) {
-          await telegram.editMessageText(messageChatId, messageId, "Cancellation requested. Send your message again after the current turn stops.", removeReplyMarkupExtra()).catch(() => {});
+          await telegram.editMessageText(messageChatId, messageId, "Stop requested for the current Codex turn. Send your message again after it stops.", removeReplyMarkupExtra()).catch(() => {});
         }
       } catch (error) {
         if (turn) {
           turn.cancelRequested = false;
           await updateTurnMessage(turn, true);
         }
-        await telegram.sendMessage(pending.chatId, `Cancel failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+        await telegram.sendMessage(pending.chatId, `Stop failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
       }
       return;
     }
@@ -1327,17 +1328,17 @@ async function handleCallback(update: TelegramUpdate): Promise<void> {
     }
 
     if (turn.cancelRequested) {
-      await telegram.answerCallbackQuery(callback.id, "Cancellation is already in progress.").catch(() => {});
+      await telegram.answerCallbackQuery(callback.id, "Stop is already in progress.").catch(() => {});
       return;
     }
 
-    await telegram.answerCallbackQuery(callback.id, "Cancelling...").catch(() => {});
+    await telegram.answerCallbackQuery(callback.id, "Stopping...").catch(() => {});
     try {
       await requestTurnInterrupt(turn);
     } catch (error) {
       turn.cancelRequested = false;
       await updateTurnMessage(turn, true);
-      await telegram.sendMessage(turn.chatId, `Cancel failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+      await telegram.sendMessage(turn.chatId, `Stop failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
     }
     return;
   }

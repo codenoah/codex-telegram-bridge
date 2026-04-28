@@ -13,7 +13,7 @@
 
 - 터미널과 Telegram이 같은 Codex app-server 스레드를 공유합니다.
 - Telegram 페어링과 allowlist 기반 접근 제어를 지원합니다.
-- 실행 중인 Codex turn을 Telegram의 인라인 `Cancel` 버튼으로 취소할 수 있습니다.
+- 실행 중인 Codex turn을 Telegram의 인라인 `Stop current turn` 버튼으로 중단할 수 있습니다.
 - 명령 실행과 파일 변경 승인 요청을 Telegram 인라인 버튼으로 처리합니다.
 - 명령, 도구 호출, 패치, 최종 답변 진행 상태를 실시간으로 보여줍니다.
 - 완료된 turn의 `Workspace changes`와 `Diff preview`를 길이 제한과 함께 보여줍니다.
@@ -116,7 +116,7 @@ codex-tg policy allowlist
 
 - `/status`는 활성 thread와 bridge 상태를 보여줍니다.
 - `/new`는 새 Codex thread를 만듭니다.
-- `/cancel`은 실행 중인 Codex turn을 중단합니다.
+- `/cancel`은 thread를 종료하지 않고 진행 중인 Codex turn만 중단합니다.
 - `/cwd`는 현재 프로젝트 디렉터리를 보여줍니다.
 - `/cwd <path>`는 다음 Codex thread에서 사용할 프로젝트 디렉터리를 변경합니다.
 - `/logs`는 최근 진행 로그를 보여줍니다.
@@ -127,9 +127,10 @@ codex-tg policy allowlist
 - `/thread <id>`는 Telegram이 사용할 기존 thread id를 전환합니다.
 - 그 외 텍스트는 활성 Codex thread로 전달됩니다.
 
-Telegram 메시지가 Codex turn을 시작하면 작업 상태 메시지에 인라인 `Cancel`
-버튼이 표시됩니다. Codex가 이미 작업 중일 때 다른 메시지를 보내면, 브리지는
-현재 turn에 추가할지, 현재 turn을 취소할지, 새 메시지를 버릴지 묻습니다.
+Telegram 메시지가 Codex turn을 시작하면 작업 상태 메시지에 인라인
+`Stop current turn` 버튼이 표시됩니다. Codex가 이미 작업 중일 때 다른 메시지를
+보내면, 브리지는 현재 turn에 추가할지, 진행 중인 turn을 중단할지, 새 메시지를
+버릴지 묻습니다.
 
 로컬 세션에서 실행 중인 bridge를 통해 Telegram 알림을 보내려면 다음 명령을
 사용하세요.

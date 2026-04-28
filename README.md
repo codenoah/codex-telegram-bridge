@@ -14,7 +14,7 @@ source of truth.
 
 - Shared Codex app-server thread between terminal and Telegram.
 - Telegram pairing and allowlist access control.
-- Inline `Cancel` button for active Codex turns.
+- Inline `Stop current turn` button for active Codex turns.
 - Command/file-change approval prompts with inline buttons.
 - Live progress updates for commands, tool calls, patches, and final answers.
 - Capped `Workspace changes` and `Diff preview` on completed turns.
@@ -113,7 +113,7 @@ codex-tg policy allowlist
 
 - `/status` shows the active thread and bridge state.
 - `/new` creates a fresh Codex thread.
-- `/cancel` interrupts the active Codex turn.
+- `/cancel` stops the current Codex turn without ending the thread.
 - `/cwd` shows the current project directory.
 - `/cwd <path>` changes the project directory for the next Codex thread.
 - `/logs` shows recent progress lines.
@@ -125,8 +125,8 @@ codex-tg policy allowlist
 - Any other text is sent to the active Codex thread.
 
 When a Telegram message starts a Codex turn, the working status message includes
-an inline `Cancel` button. If you send another message while Codex is already
-working, the bridge asks whether to add it to the current turn, cancel the
+an inline `Stop current turn` button. If you send another message while Codex is
+already working, the bridge asks whether to add it to the current turn, stop the
 current turn, or discard it.
 
 To send a local notification through the running bridge, use:

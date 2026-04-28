@@ -10,5 +10,5 @@
 - Initial local Telegram bridge for Codex app-server.
 - Shared terminal and Telegram thread control.
 - Pairing and allowlist access control.
-- Inline turn cancellation.
+- Inline current-turn stop control.
 - Progress, diff preview, `/logs`, `/diff`, and `/file` inspection commands.
