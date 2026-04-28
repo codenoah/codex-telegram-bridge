@@ -33,6 +33,21 @@ source of truth.
 npm install -g codex-telegram-bridge
 ```
 
+### Using nvm
+
+`codex-telegram-bridge` works with `nvm`, but npm global packages are installed
+per Node.js version. Install it under the Node version you normally use for
+Codex:
+
+```sh
+nvm use 22
+npm install -g codex-telegram-bridge
+```
+
+If `codex-tg` or `codex-remote` disappears after `nvm use <version>`, install
+the package again for that Node version. The active `node` on your `PATH` must be
+Node.js 20 or newer.
+
 ## Install From Source
 
 ```sh
@@ -154,3 +169,9 @@ npm run access -- status
 ## License
 
 MIT
+
+## Acknowledgements
+
+This project was inspired by the Telegram workflow in Claude Code's Telegram
+plugin. Codex Telegram Bridge is an independent implementation for OpenAI Codex
+app-server sessions and is not affiliated with Anthropic or OpenAI.
