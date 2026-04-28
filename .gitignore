@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+coverage/
+dist/
+*.log
+
+.env
+.env.*
+!.env.example
+
+.codex/
+telegram-bridge/
+
+*.tmp
+*.pid

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+COMMAND="${1:-status}"
+
+case "$COMMAND" in
+  token|configure|configure-token)
+    shift || true
+    "$SCRIPT_DIR/configure-token" "$@"
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "${CODEX_TMUX_SESSION:-codex-telegram}" 2>/dev/null; then
+      tmux kill-session -t "${CODEX_TMUX_SESSION:-codex-telegram}"
+      echo "Stopped tmux session ${CODEX_TMUX_SESSION:-codex-telegram}; run codex-remote to restart with the new token."
+    fi
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+Usage:
+  codex-tg token                 Save or replace the Telegram bot token
+  codex-tg status                Show pairing/access state
+  codex-tg cwd                   Show the current Telegram bridge cwd
+  codex-tg cwd <path>            Change cwd for the next Telegram Codex thread
+  codex-tg pair <code>           Approve a Telegram pairing code
+  codex-tg deny <code>           Deny a pending pairing code
+  codex-tg allow <senderId>      Allow a Telegram sender id
+  codex-tg remove <senderId>     Remove a Telegram sender id
+  codex-tg policy allowlist      Lock the bot to the allowlist
+  codex-tg policy pairing        Temporarily allow pairing codes
+  codex-tg policy disabled       Drop all Telegram messages
+EOF
+    ;;
+  *)
+    exec bun run --cwd "$ROOT_DIR" access "$@"
+    ;;
+esac

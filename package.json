@@ -1,0 +1,27 @@
+{
+  "name": "codex-telegram-bridge",
+  "version": "0.1.0",
+  "description": "Local Telegram bridge for continuing OpenAI Codex app-server threads from your phone.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "codex-remote": "./bin/codex-remote",
+    "codex-tg": "./bin/codex-tg"
+  },
+  "scripts": {
+    "start": "bun src/bridge.ts",
+    "access": "bun src/access.ts",
+    "check": "bun build src/bridge.ts --target bun --outfile /tmp/codex-telegram-bridge-bridge.js && bun build src/access.ts --target bun --outfile /tmp/codex-telegram-bridge-access.js"
+  },
+  "keywords": [
+    "codex",
+    "openai",
+    "telegram",
+    "app-server",
+    "remote-control",
+    "developer-tools"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

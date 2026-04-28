@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="${CODEX_TELEGRAM_STATE_DIR:-$HOME/.codex/telegram-bridge}"
+ENV_FILE="$STATE_DIR/.env"
+
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+if [[ -t 0 ]]; then
+  printf "Telegram bot token: " >&2
+  stty -echo
+  IFS= read -r TOKEN
+  stty echo
+  printf "\n" >&2
+else
+  IFS= read -r TOKEN
+fi
+
+if [[ ! "$TOKEN" =~ ^[0-9]+:.+ ]]; then
+  echo "Token does not look like a BotFather token." >&2
+  exit 1
+fi
+
+TMP_FILE="$ENV_FILE.tmp"
+if [[ -f "$ENV_FILE" ]]; then
+  grep -v '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" > "$TMP_FILE" || true
+else
+  : > "$TMP_FILE"
+fi
+
+printf 'TELEGRAM_BOT_TOKEN=%s\n' "$TOKEN" >> "$TMP_FILE"
+mv "$TMP_FILE" "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+echo "Saved token to $ENV_FILE"

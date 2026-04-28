@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CODEX_APP_SERVER_URL="${CODEX_APP_SERVER_URL:-ws://127.0.0.1:17345}"
+CODEX_APP_SERVER_HEALTH_URL="${CODEX_APP_SERVER_HEALTH_URL:-http://127.0.0.1:17345}"
+CODEX_TELEGRAM_STATE_DIR="${CODEX_TELEGRAM_STATE_DIR:-$HOME/.codex/telegram-bridge}"
+CODEX_BRIDGE_CWD="${CODEX_BRIDGE_CWD:-$PWD}"
+CODEX_TMUX_SESSION="${CODEX_TMUX_SESSION:-codex-telegram}"
+TMUX_BIN="${TMUX_BIN:-$(command -v tmux || true)}"
+
+mkdir -p "$CODEX_TELEGRAM_STATE_DIR/logs"
+
+ready() {
+  curl -fsS "$CODEX_APP_SERVER_HEALTH_URL/readyz" >/dev/null 2>&1
+}
+
+if ! ready; then
+  echo "starting codex app-server at $CODEX_APP_SERVER_URL"
+  if [[ -n "$TMUX_BIN" ]]; then
+    "$TMUX_BIN" kill-session -t "$CODEX_TMUX_SESSION" 2>/dev/null || true
+    "$TMUX_BIN" new-session -d -s "$CODEX_TMUX_SESSION" -n app-server \
+      "cd '$CODEX_BRIDGE_CWD' && codex app-server --listen '$CODEX_APP_SERVER_URL'"
+  else
+    nohup bash -c "tail -f /dev/null | codex app-server --listen '$CODEX_APP_SERVER_URL'" \
+      >"$CODEX_TELEGRAM_STATE_DIR/logs/app-server.log" 2>&1 &
+    echo "$!" >"$CODEX_TELEGRAM_STATE_DIR/app-server.pid"
+  fi
+
+  for _ in {1..50}; do
+    if ready; then break; fi
+    sleep 0.1
+  done
+
+  if ! ready; then
+    echo "codex app-server did not become ready; see $CODEX_TELEGRAM_STATE_DIR/logs/app-server.log" >&2
+    exit 1
+  fi
+fi
+
+TOKEN_SET=0
+if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  TOKEN_SET=1
+elif [[ -f "$CODEX_TELEGRAM_STATE_DIR/.env" ]] && grep -q '^TELEGRAM_BOT_TOKEN=' "$CODEX_TELEGRAM_STATE_DIR/.env"; then
+  TOKEN_SET=1
+fi
+
+BRIDGE_RUNNING=0
+if [[ -f "$CODEX_TELEGRAM_STATE_DIR/bridge.pid" ]]; then
+  BRIDGE_PID="$(cat "$CODEX_TELEGRAM_STATE_DIR/bridge.pid" 2>/dev/null || true)"
+  if [[ -n "$BRIDGE_PID" ]] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    BRIDGE_RUNNING=1
+  fi
+fi
+
+if [[ "$TOKEN_SET" == "1" && "$BRIDGE_RUNNING" == "0" ]]; then
+  echo "starting Telegram bridge"
+  if [[ -n "$TMUX_BIN" ]] && "$TMUX_BIN" has-session -t "$CODEX_TMUX_SESSION" 2>/dev/null; then
+    if ! "$TMUX_BIN" list-windows -t "$CODEX_TMUX_SESSION" -F '#W' | grep -qx telegram-bridge; then
+      "$TMUX_BIN" new-window -t "$CODEX_TMUX_SESSION" -n telegram-bridge \
+        "cd '$CODEX_BRIDGE_CWD' && CODEX_APP_SERVER_URL='$CODEX_APP_SERVER_URL' CODEX_TELEGRAM_STATE_DIR='$CODEX_TELEGRAM_STATE_DIR' CODEX_BRIDGE_CWD='$CODEX_BRIDGE_CWD' bun run --cwd '$ROOT_DIR' start"
+    fi
+  else
+    CODEX_APP_SERVER_URL="$CODEX_APP_SERVER_URL" \
+    CODEX_TELEGRAM_STATE_DIR="$CODEX_TELEGRAM_STATE_DIR" \
+    CODEX_BRIDGE_CWD="$CODEX_BRIDGE_CWD" \
+    nohup bun run --cwd "$ROOT_DIR" start \
+      >"$CODEX_TELEGRAM_STATE_DIR/logs/bridge.log" 2>&1 &
+  fi
+elif [[ "$TOKEN_SET" == "0" ]]; then
+  echo "Telegram bridge token is not configured; skipping bridge startup."
+  echo "Create $CODEX_TELEGRAM_STATE_DIR/.env with TELEGRAM_BOT_TOKEN=..."
+fi
+
+exec codex --remote "$CODEX_APP_SERVER_URL" --no-alt-screen "$@"
