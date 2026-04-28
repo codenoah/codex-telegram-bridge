@@ -10,5 +10,8 @@ coverage/
 .codex/
 telegram-bridge/
 
+# Local application/supporting notes
+docs/jetbrains-oss-application.md
+
 *.tmp
 *.pid
