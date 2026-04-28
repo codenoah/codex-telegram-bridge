@@ -22,21 +22,28 @@ source of truth.
 ## Requirements
 
 - OpenAI Codex CLI with `app-server` support.
-- Bun.
+- Node.js 20 or newer.
 - Telegram bot token from BotFather.
 - `tmux` and `curl` are recommended. The bridge can run without `tmux`, but
   tmux gives you durable app-server and bridge panes.
 
+## Install
+
+```sh
+npm install -g codex-telegram-bridge
+```
+
 ## Install From Source
 
 ```sh
-git clone https://github.com/YOUR_NAME/codex-telegram-bridge.git
+git clone https://github.com/codenoah/codex-telegram-bridge.git
 cd codex-telegram-bridge
-bun install
-bun link
+npm install
+npm run build
+npm link
 ```
 
-If you do not use `bun link`, run the scripts directly from this directory.
+If you do not use `npm link`, run the scripts directly from this directory.
 
 ## Quick Start
 
@@ -133,14 +140,15 @@ remote access to your local development machine.
 ## Development
 
 ```sh
-bun run check
+npm run check
 ```
 
 Useful local commands:
 
 ```sh
-bun run start
-bun run access status
+npm run build
+npm run start
+npm run access -- status
 ```
 
 ## License

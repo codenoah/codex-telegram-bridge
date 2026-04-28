@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { defaultAccess, loadDotEnv, normalizeCwd, paths, pruneExpired, readAccess, readBridgeState, writeAccess, writeBridgeState, } from "./common.js";
+loadDotEnv();
+const args = process.argv.slice(2);
+const command = args[0] ?? "status";
+function save(access = readAccess()) {
+    writeAccess(access);
+}
+function status() {
+    const access = readAccess();
+    const bridgeState = readBridgeState();
+    if (pruneExpired(access))
+        save(access);
+    console.log(`state: ${paths().stateDir}`);
+    console.log(`cwd: ${bridgeState.cwd ?? "-"}`);
+    console.log(`activeThreadId: ${bridgeState.activeThreadId ?? "-"}`);
+    console.log(`activeTurnId: ${bridgeState.activeTurnId ?? "-"}`);
+    console.log(`dmPolicy: ${access.dmPolicy}`);
+    console.log(`allowFrom (${access.allowFrom.length}): ${access.allowFrom.join(", ") || "-"}`);
+    const pending = Object.entries(access.pending);
+    console.log(`pending (${pending.length}):`);
+    for (const [code, entry] of pending) {
+        const ageSeconds = Math.round((Date.now() - entry.createdAt) / 1000);
+        console.log(`  ${code} sender=${entry.senderId} chat=${entry.chatId} age=${ageSeconds}s`);
+    }
+}
+switch (command) {
+    case "status": {
+        status();
+        break;
+    }
+    case "cwd": {
+        const state = readBridgeState();
+        const rawPath = args.slice(1).join(" ");
+        if (!rawPath) {
+            console.log(state.cwd ?? process.cwd());
+            break;
+        }
+        const cwd = normalizeCwd(rawPath, state.cwd ?? process.cwd());
+        writeBridgeState({ ...state, cwd, activeThreadId: undefined, activeTurnId: undefined });
+        console.log(`cwd=${cwd}`);
+        console.log("active thread cleared; the next Telegram message will start a new Codex thread from this directory.");
+        break;
+    }
+    case "pair": {
+        const code = args[1];
+        if (!code)
+            throw new Error("usage: codex-tg pair <code>");
+        const access = readAccess();
+        if (pruneExpired(access))
+            save(access);
+        const pending = access.pending[code];
+        if (!pending)
+            throw new Error(`pairing code not found: ${code}`);
+        if (pending.expiresAt < Date.now())
+            throw new Error(`pairing code expired: ${code}`);
+        if (!access.allowFrom.includes(pending.senderId))
+            access.allowFrom.push(pending.senderId);
+        delete access.pending[code];
+        writeAccess(access);
+        mkdirSync(paths().approvedDir, { recursive: true, mode: 0o700 });
+        writeFileSync(join(paths().approvedDir, pending.senderId), pending.chatId, { mode: 0o600 });
+        console.log(`approved sender ${pending.senderId}`);
+        break;
+    }
+    case "deny": {
+        const code = args[1];
+        if (!code)
+            throw new Error("usage: codex-tg deny <code>");
+        const access = readAccess();
+        delete access.pending[code];
+        writeAccess(access);
+        console.log(`denied ${code}`);
+        break;
+    }
+    case "allow": {
+        const senderId = args[1];
+        if (!senderId)
+            throw new Error("usage: codex-tg allow <senderId>");
+        const access = readAccess();
+        if (!access.allowFrom.includes(senderId))
+            access.allowFrom.push(senderId);
+        writeAccess(access);
+        console.log(`allowed ${senderId}`);
+        break;
+    }
+    case "remove": {
+        const senderId = args[1];
+        if (!senderId)
+            throw new Error("usage: codex-tg remove <senderId>");
+        const access = readAccess();
+        access.allowFrom = access.allowFrom.filter((id) => id !== senderId);
+        writeAccess(access);
+        console.log(`removed ${senderId}`);
+        break;
+    }
+    case "policy": {
+        const policy = args[1];
+        if (!policy || !["pairing", "allowlist", "disabled"].includes(policy)) {
+            throw new Error("usage: codex-tg policy <pairing|allowlist|disabled>");
+        }
+        const access = readAccess();
+        access.dmPolicy = policy;
+        writeAccess(access);
+        console.log(`dmPolicy=${policy}`);
+        break;
+    }
+    case "init": {
+        writeAccess(defaultAccess());
+        console.log(`initialized ${paths().accessFile}`);
+        break;
+    }
+    default:
+        throw new Error(`unknown command: ${command}`);
+}

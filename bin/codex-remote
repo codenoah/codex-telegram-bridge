@@ -66,13 +66,13 @@ if [[ "$TOKEN_SET" == "1" && "$BRIDGE_RUNNING" == "0" ]]; then
   if [[ -n "$TMUX_BIN" ]] && "$TMUX_BIN" has-session -t "$CODEX_TMUX_SESSION" 2>/dev/null; then
     if ! "$TMUX_BIN" list-windows -t "$CODEX_TMUX_SESSION" -F '#W' | grep -qx telegram-bridge; then
       "$TMUX_BIN" new-window -t "$CODEX_TMUX_SESSION" -n telegram-bridge \
-        "cd '$CODEX_BRIDGE_CWD' && CODEX_APP_SERVER_URL='$CODEX_APP_SERVER_URL' CODEX_TELEGRAM_STATE_DIR='$CODEX_TELEGRAM_STATE_DIR' CODEX_BRIDGE_CWD='$CODEX_BRIDGE_CWD' bun run --cwd '$ROOT_DIR' start"
+        "cd '$CODEX_BRIDGE_CWD' && CODEX_APP_SERVER_URL='$CODEX_APP_SERVER_URL' CODEX_TELEGRAM_STATE_DIR='$CODEX_TELEGRAM_STATE_DIR' CODEX_BRIDGE_CWD='$CODEX_BRIDGE_CWD' node '$ROOT_DIR/dist/bridge.js'"
     fi
   else
     CODEX_APP_SERVER_URL="$CODEX_APP_SERVER_URL" \
     CODEX_TELEGRAM_STATE_DIR="$CODEX_TELEGRAM_STATE_DIR" \
     CODEX_BRIDGE_CWD="$CODEX_BRIDGE_CWD" \
-    nohup bun run --cwd "$ROOT_DIR" start \
+    nohup node "$ROOT_DIR/dist/bridge.js" \
       >"$CODEX_TELEGRAM_STATE_DIR/logs/bridge.log" 2>&1 &
   fi
 elif [[ "$TOKEN_SET" == "0" ]]; then

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -11,7 +11,7 @@ import {
   readBridgeState,
   writeAccess,
   writeBridgeState,
-} from "./common.ts";
+} from "./common.js";
 
 loadDotEnv();
 
@@ -60,7 +60,7 @@ switch (command) {
   }
   case "pair": {
     const code = args[1];
-    if (!code) throw new Error("usage: bun run access pair <code>");
+    if (!code) throw new Error("usage: codex-tg pair <code>");
     const access = readAccess();
     if (pruneExpired(access)) save(access);
     const pending = access.pending[code];
@@ -76,7 +76,7 @@ switch (command) {
   }
   case "deny": {
     const code = args[1];
-    if (!code) throw new Error("usage: bun run access deny <code>");
+    if (!code) throw new Error("usage: codex-tg deny <code>");
     const access = readAccess();
     delete access.pending[code];
     writeAccess(access);
@@ -85,7 +85,7 @@ switch (command) {
   }
   case "allow": {
     const senderId = args[1];
-    if (!senderId) throw new Error("usage: bun run access allow <senderId>");
+    if (!senderId) throw new Error("usage: codex-tg allow <senderId>");
     const access = readAccess();
     if (!access.allowFrom.includes(senderId)) access.allowFrom.push(senderId);
     writeAccess(access);
@@ -94,7 +94,7 @@ switch (command) {
   }
   case "remove": {
     const senderId = args[1];
-    if (!senderId) throw new Error("usage: bun run access remove <senderId>");
+    if (!senderId) throw new Error("usage: codex-tg remove <senderId>");
     const access = readAccess();
     access.allowFrom = access.allowFrom.filter((id) => id !== senderId);
     writeAccess(access);
@@ -104,7 +104,7 @@ switch (command) {
   case "policy": {
     const policy = args[1] as "pairing" | "allowlist" | "disabled" | undefined;
     if (!policy || !["pairing", "allowlist", "disabled"].includes(policy)) {
-      throw new Error("usage: bun run access policy <pairing|allowlist|disabled>");
+      throw new Error("usage: codex-tg policy <pairing|allowlist|disabled>");
     }
     const access = readAccess();
     access.dmPolicy = policy;

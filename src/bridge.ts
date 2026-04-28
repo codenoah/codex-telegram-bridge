@@ -1,8 +1,9 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import WebSocket from "ws";
 import {
   BridgeState,
   chunkText,
@@ -16,7 +17,7 @@ import {
   readAccess,
   readBridgeState,
   writeBridgeState,
-} from "./common.ts";
+} from "./common.js";
 
 loadDotEnv();
 
@@ -171,7 +172,7 @@ class CodexClient {
         reject(new Error(`timed out connecting to ${CODEX_APP_SERVER_URL}`));
       }, 10000);
 
-      ws.onopen = () => {
+      ws.on("open", () => {
         void this.request("initialize", {
           clientInfo: {
             name: "codex_telegram_bridge",
@@ -184,18 +185,18 @@ class CodexClient {
           clearTimeout(timeout);
           resolve();
         }).catch(reject);
-      };
+      });
 
-      ws.onmessage = (event) => this.handleMessage(String(event.data));
-      ws.onerror = () => reject(new Error(`WebSocket error connecting to ${CODEX_APP_SERVER_URL}`));
-      ws.onclose = () => {
+      ws.on("message", (data) => this.handleMessage(String(data)));
+      ws.on("error", () => reject(new Error(`WebSocket error connecting to ${CODEX_APP_SERVER_URL}`)));
+      ws.on("close", () => {
         for (const [, pending] of this.pending) pending.reject(new Error("Codex app-server connection closed"));
         this.pending.clear();
         this.ws = undefined;
         this.connectPromise = undefined;
         this.resumedThreads.clear();
         this.onClose();
-      };
+      });
     });
 
     return this.connectPromise;
@@ -925,12 +926,12 @@ async function sendDiff(chatId: string, rawPath: string): Promise<void> {
     diff = report.diff;
   } else {
     const resolved = path ? resolveWorkspacePath(path) : undefined;
-    if (resolved?.error) {
+    if (resolved && !resolved.ok) {
       await telegram.sendMessage(chatId, resolved.error);
       return;
     }
-    diff = gitDiff(path ? resolved?.rel : undefined);
-    if (!diff.trim() && resolved?.rel && isUntracked(resolved.rel)) {
+    diff = gitDiff(path && resolved?.ok ? resolved.rel : undefined);
+    if (!diff.trim() && resolved?.ok && isUntracked(resolved.rel)) {
       await telegram.sendMessage(chatId, `${resolved.rel} is untracked, so git has no tracked diff for it.\n\nUse:\n/file ${resolved.rel}`);
       return;
     }
@@ -953,42 +954,43 @@ async function sendFile(chatId: string, rawArgs: string): Promise<void> {
   }
 
   const resolved = resolveWorkspacePath(path);
-  if (resolved.error) {
+  if (!resolved.ok) {
     await telegram.sendMessage(chatId, resolved.error);
     return;
   }
+  const { abs, rel } = resolved;
 
   let stat;
   try {
-    stat = statSync(resolved.abs);
+    stat = statSync(abs);
   } catch {
-    await telegram.sendMessage(chatId, `File not found: ${resolved.rel}`);
+    await telegram.sendMessage(chatId, `File not found: ${rel}`);
     return;
   }
   if (!stat.isFile()) {
-    await telegram.sendMessage(chatId, `Not a file: ${resolved.rel}`);
+    await telegram.sendMessage(chatId, `Not a file: ${rel}`);
     return;
   }
 
   let content: string;
   try {
-    content = readFileSync(resolved.abs, "utf8");
+    content = readFileSync(abs, "utf8");
   } catch (error) {
-    await telegram.sendMessage(chatId, `Could not read ${resolved.rel}: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+    await telegram.sendMessage(chatId, `Could not read ${rel}: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
     return;
   }
 
   if (content.includes("\u0000")) {
-    await telegram.sendMessage(chatId, `${resolved.rel} looks like a binary file; not sending it as text.`);
+    await telegram.sendMessage(chatId, `${rel} looks like a binary file; not sending it as text.`);
     return;
   }
 
   const maxChars = all ? FILE_ALL_MAX_CHARS : FILE_PREVIEW_MAX_CHARS;
   const suffix = all
     ? "\n\n... truncated"
-    : `\n\n... truncated\nUse:\n/file ${resolved.rel} --all`;
+    : `\n\n... truncated\nUse:\n/file ${rel} --all`;
   const body = clipWithNotice(content, maxChars, suffix);
-  await telegram.sendMessage(chatId, `File: ${resolved.rel}\n\n${body || "(empty)"}`);
+  await telegram.sendMessage(chatId, `File: ${rel}\n\n${body || "(empty)"}`);
 }
 
 function parseFileArgs(rawArgs: string): { path: string; all: boolean } {
@@ -998,16 +1000,16 @@ function parseFileArgs(rawArgs: string): { path: string; all: boolean } {
   return { path: rest, all };
 }
 
-function resolveWorkspacePath(rawPath: string): { abs: string; rel: string; error?: never } | { error: string; abs?: never; rel?: never } {
+function resolveWorkspacePath(rawPath: string): { ok: true; abs: string; rel: string } | { ok: false; error: string } {
   const cwd = currentCwd();
   const input = rawPath.trim();
-  if (!input) return { error: "Path is required." };
+  if (!input) return { ok: false, error: "Path is required." };
   const abs = isAbsolute(input) ? resolve(input) : resolve(cwd, input);
   const rel = relative(cwd, abs);
   if (rel.startsWith("..") || isAbsolute(rel)) {
-    return { error: `Refusing to read outside cwd:\n${cwd}` };
+    return { ok: false, error: `Refusing to read outside cwd:\n${cwd}` };
   }
-  return { abs, rel: normalizeRelativePath(rel) };
+  return { ok: true, abs, rel: normalizeRelativePath(rel) };
 }
 
 function gitDiff(path?: string): string {
@@ -1102,7 +1104,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       "/file <path> sends a file preview.",
       "",
       "If you are not paired yet, send any message and approve the code locally:",
-      "bun run --cwd tools/codex-telegram-bridge access pair <code>",
+      "codex-tg pair <code>",
     ].join("\n"));
     return;
   }
@@ -1111,7 +1113,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
   if (gate.action === "drop") return;
   if (gate.action === "pair") {
     const lead = gate.isResend ? "Still pending" : "Pairing required";
-    await telegram.sendMessage(chatId, `${lead}. Run locally:\n\nbun run --cwd tools/codex-telegram-bridge access pair ${gate.code}`);
+    await telegram.sendMessage(chatId, `${lead}. Run locally:\n\ncodex-tg pair ${gate.code}`);
     return;
   }
 

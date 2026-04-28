@@ -4,14 +4,24 @@
   "description": "Local Telegram bridge for continuing OpenAI Codex app-server threads from your phone.",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codenoah/codex-telegram-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codenoah/codex-telegram-bridge/issues"
+  },
+  "homepage": "https://github.com/codenoah/codex-telegram-bridge#readme",
   "bin": {
     "codex-remote": "./bin/codex-remote",
     "codex-tg": "./bin/codex-tg"
   },
   "scripts": {
-    "start": "bun src/bridge.ts",
-    "access": "bun src/access.ts",
-    "check": "bun build src/bridge.ts --target bun --outfile /tmp/codex-telegram-bridge-bridge.js && bun build src/access.ts --target bun --outfile /tmp/codex-telegram-bridge-access.js"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bridge.js",
+    "access": "node dist/access.js",
+    "check": "npm run build",
+    "prepack": "npm run build"
   },
   "keywords": [
     "codex",
@@ -22,6 +32,23 @@
     "developer-tools"
   ],
   "engines": {
-    "bun": ">=1.1.0"
+    "node": ">=20"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.9.0"
   }
 }

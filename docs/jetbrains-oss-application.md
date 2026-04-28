@@ -9,7 +9,7 @@ Development License application after it is published as a public repository.
 - OSI-compatible license, currently MIT.
 - Clear README with setup, usage, and security notes.
 - No committed bot tokens, local state, logs, or personal paths.
-- Working development check: `bun run check`.
+- Working development check: `npm run check`.
 - At least one tagged release is recommended.
 
 ## Short Project Description

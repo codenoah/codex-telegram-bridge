@@ -38,6 +38,6 @@ Usage:
 EOF
     ;;
   *)
-    exec bun run --cwd "$ROOT_DIR" access "$@"
+    exec node "$ROOT_DIR/dist/access.js" "$@"
     ;;
 esac

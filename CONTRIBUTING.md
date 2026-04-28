@@ -5,8 +5,8 @@ Thanks for taking the time to improve Codex Telegram Bridge.
 ## Development
 
 ```sh
-bun install
-bun run check
+npm install
+npm run check
 ```
 
 The bridge intentionally keeps dependencies and setup small. Prefer changes
