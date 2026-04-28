@@ -118,6 +118,15 @@ an inline `Cancel` button. If you send another message while Codex is already
 working, the bridge asks whether to add it to the current turn, cancel the
 current turn, or discard it.
 
+To send a local notification through the running bridge, use:
+
+```sh
+codex-tg notify "Codex finished the local task."
+```
+
+This queues a local notification for the bridge process. It does not read the
+Telegram bot token or call the Telegram Bot API from the caller process.
+
 ## Configuration
 
 The bridge reads real environment variables first, then

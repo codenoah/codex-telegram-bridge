@@ -9,6 +9,7 @@ loadDotEnv();
 const STATE = paths();
 ensureDir(STATE.stateDir);
 ensureDir(STATE.logsDir);
+ensureDir(STATE.notificationsDir);
 writeFileSync(STATE.bridgePidFile, String(process.pid), { mode: 0o600 });
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CODEX_APP_SERVER_URL = process.env.CODEX_APP_SERVER_URL ?? "ws://127.0.0.1:17345";
@@ -1211,11 +1212,57 @@ function checkApprovals() {
         // Best-effort notification only.
     }
 }
+async function checkLocalNotifications() {
+    let files;
+    try {
+        mkdirSync(STATE.notificationsDir, { recursive: true, mode: 0o700 });
+        files = readdirSync(STATE.notificationsDir)
+            .filter((name) => name.endsWith(".json"))
+            .sort()
+            .slice(0, 10);
+    }
+    catch {
+        return;
+    }
+    if (files.length === 0)
+        return;
+    const access = readAccess();
+    if (access.allowFrom.length === 0)
+        return;
+    for (const name of files) {
+        const file = join(STATE.notificationsDir, name);
+        let note;
+        try {
+            note = JSON.parse(readFileSync(file, "utf8"));
+        }
+        catch {
+            rmSync(file, { force: true });
+            continue;
+        }
+        const text = String(note.text ?? "").trim();
+        if (!text) {
+            rmSync(file, { force: true });
+            continue;
+        }
+        for (const senderId of access.allowFrom) {
+            let chatId = senderId;
+            try {
+                chatId = readFileSync(join(STATE.approvedDir, senderId), "utf8").trim() || senderId;
+            }
+            catch {
+                // Private chat ids normally match sender ids; fall back to sender id.
+            }
+            await telegram.sendMessage(chatId, text);
+        }
+        rmSync(file, { force: true });
+    }
+}
 async function pollTelegram() {
     let offset = bridgeState.telegramOffset;
     for (;;) {
         checkApprovals();
         try {
+            await checkLocalNotifications();
             const updates = await telegram.getUpdates(offset);
             for (const update of updates) {
                 offset = update.update_id + 1;

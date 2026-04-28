@@ -26,6 +26,7 @@ case "$COMMAND" in
 Usage:
   codex-tg token                 Save or replace the Telegram bot token
   codex-tg status                Show pairing/access state
+  codex-tg notify <message>      Queue a Telegram notification through the running bridge
   codex-tg cwd                   Show the current Telegram bridge cwd
   codex-tg cwd <path>            Change cwd for the next Telegram Codex thread
   codex-tg pair <code>           Approve a Telegram pairing code

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { defaultAccess, loadDotEnv, normalizeCwd, paths, pruneExpired, readAccess, readBridgeState, writeAccess, writeBridgeState, } from "./common.js";
 loadDotEnv();
@@ -42,6 +43,28 @@ switch (command) {
         writeBridgeState({ ...state, cwd, activeThreadId: undefined, activeTurnId: undefined });
         console.log(`cwd=${cwd}`);
         console.log("active thread cleared; the next Telegram message will start a new Codex thread from this directory.");
+        break;
+    }
+    case "notify": {
+        const text = args.slice(1).join(" ").trim();
+        if (!text)
+            throw new Error("usage: codex-tg notify <message>");
+        const state = readBridgeState();
+        const dir = paths().notificationsDir;
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const id = `${Date.now()}-${process.pid}-${randomBytes(3).toString("hex")}`;
+        const file = join(dir, `${id}.json`);
+        const tmp = `${file}.tmp`;
+        writeFileSync(tmp, `${JSON.stringify({
+            id,
+            text,
+            cwd: state.cwd ?? process.cwd(),
+            createdAt: new Date().toISOString(),
+            source: "codex-tg notify",
+        }, null, 2)}\n`, { mode: 0o600 });
+        renameSync(tmp, file);
+        console.log(`queued notification ${id}`);
+        console.log("the running Telegram bridge will deliver it to allowlisted chats");
         break;
     }
     case "pair": {

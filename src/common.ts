@@ -39,6 +39,7 @@ export function paths(stateDir = defaultStateDir()) {
     accessFile: join(stateDir, "access.json"),
     bridgeStateFile: join(stateDir, "state.json"),
     approvedDir: join(stateDir, "approved"),
+    notificationsDir: join(stateDir, "notifications"),
     logsDir: join(stateDir, "logs"),
     bridgePidFile: join(stateDir, "bridge.pid"),
     appServerPidFile: join(stateDir, "app-server.pid"),
