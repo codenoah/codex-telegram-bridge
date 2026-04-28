@@ -40,6 +40,7 @@
     "src/",
     "README.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
     "SECURITY.md"
   ],

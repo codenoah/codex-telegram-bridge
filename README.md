@@ -173,5 +173,8 @@ MIT
 ## Acknowledgements
 
 This project was inspired by the Telegram workflow in Claude Code's Telegram
-plugin. Codex Telegram Bridge is an independent implementation for OpenAI Codex
+plugin. Its pairing/allowlist access-control flow was informed by that plugin's
+approach. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for details.
+
+Codex Telegram Bridge is an independent implementation for OpenAI Codex
 app-server sessions and is not affiliated with Anthropic or OpenAI.
