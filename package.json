@@ -13,8 +13,8 @@
   },
   "homepage": "https://github.com/codenoah/codex-telegram-bridge#readme",
   "bin": {
-    "codex-remote": "./bin/codex-remote",
-    "codex-tg": "./bin/codex-tg"
+    "codex-remote": "bin/codex-remote",
+    "codex-tg": "bin/codex-tg"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
