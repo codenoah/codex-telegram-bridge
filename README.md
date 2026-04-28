@@ -1,5 +1,7 @@
 # Codex Telegram Bridge
 
+[한국어](./README.ko.md) | English
+
 Continue the same OpenAI Codex app-server thread from your terminal and from
 Telegram.
 

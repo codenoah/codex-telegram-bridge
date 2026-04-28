@@ -39,6 +39,7 @@
     "dist/",
     "src/",
     "README.md",
+    "README.ko.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
