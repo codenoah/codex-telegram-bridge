@@ -15,9 +15,9 @@
 - Telegram 페어링과 allowlist 기반 접근 제어를 지원합니다.
 - 실행 중인 Codex turn을 Telegram의 인라인 `Stop current turn` 버튼으로 중단할 수 있습니다.
 - 명령 실행과 파일 변경 승인 요청을 Telegram 인라인 버튼으로 처리합니다.
-- 명령, 도구 호출, 패치, 최종 답변 진행 상태를 실시간으로 보여줍니다.
-- 완료된 turn의 `Workspace changes`와 `Diff preview`를 길이 제한과 함께 보여줍니다.
-- `/diff`, `/file`, `/logs` 명령으로 후속 확인을 명시적으로 요청할 수 있습니다.
+- Codex가 응답을 작성하는 동안 Telegram의 `typing` 상태를 표시합니다.
+- 완료된 turn은 최종 답변만 Telegram에 남깁니다.
+- `/diff`, `/file` 명령으로 후속 확인을 명시적으로 요청할 수 있습니다.
 - Codex app-server를 인터넷에 직접 노출하지 않고 프로젝트 cwd를 제어합니다.
 
 ## 요구 사항
@@ -119,7 +119,6 @@ codex-tg policy allowlist
 - `/cancel`은 thread를 종료하지 않고 진행 중인 Codex turn만 중단합니다.
 - `/cwd`는 현재 프로젝트 디렉터리를 보여줍니다.
 - `/cwd <path>`는 다음 Codex thread에서 사용할 프로젝트 디렉터리를 변경합니다.
-- `/logs`는 최근 진행 로그를 보여줍니다.
 - `/diff`는 마지막 turn diff를 보여주며, 없으면 현재 git diff를 fallback으로 보여줍니다.
 - `/diff <path>`는 특정 파일의 diff를 보여줍니다.
 - `/file <path>`는 파일의 제한된 텍스트 미리보기를 보냅니다.
@@ -163,7 +162,7 @@ CODEX_TELEGRAM_STATE_DIR=~/.codex/telegram-bridge
 CODEX_BRIDGE_CWD=/absolute/path/to/project
 CODEX_MODEL=
 CODEX_REASONING_EFFORT=
-CODEX_TELEGRAM_PROGRESS=1
+CODEX_TELEGRAM_PROGRESS=0
 CODEX_TELEGRAM_STREAM_EDITS=0
 CODEX_TELEGRAM_DIFF_MAX_CHARS=30000
 CODEX_TELEGRAM_FILE_PREVIEW_MAX_CHARS=12000

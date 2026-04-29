@@ -47,6 +47,7 @@
     "SECURITY.md"
   ],
   "dependencies": {
+    "grammy": "^1.42.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

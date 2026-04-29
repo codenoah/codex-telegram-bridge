@@ -16,9 +16,9 @@ source of truth.
 - Telegram pairing and allowlist access control.
 - Inline `Stop current turn` button for active Codex turns.
 - Command/file-change approval prompts with inline buttons.
-- Live progress updates for commands, tool calls, patches, and final answers.
-- Capped `Workspace changes` and `Diff preview` on completed turns.
-- Explicit `/diff`, `/file`, and `/logs` commands for follow-up inspection.
+- Telegram `typing` status while Codex is writing a response.
+- Completed turns leave only the final answer in Telegram.
+- Explicit `/diff` and `/file` commands for follow-up inspection.
 - Project cwd control without exposing Codex directly to the internet.
 
 ## Requirements
@@ -116,7 +116,6 @@ codex-tg policy allowlist
 - `/cancel` stops the current Codex turn without ending the thread.
 - `/cwd` shows the current project directory.
 - `/cwd <path>` changes the project directory for the next Codex thread.
-- `/logs` shows recent progress lines.
 - `/diff` shows the last turn diff, or the current git diff as a fallback.
 - `/diff <path>` shows a file-specific diff.
 - `/file <path>` sends a capped text preview of a file.
@@ -159,7 +158,7 @@ CODEX_TELEGRAM_STATE_DIR=~/.codex/telegram-bridge
 CODEX_BRIDGE_CWD=/absolute/path/to/project
 CODEX_MODEL=
 CODEX_REASONING_EFFORT=
-CODEX_TELEGRAM_PROGRESS=1
+CODEX_TELEGRAM_PROGRESS=0
 CODEX_TELEGRAM_STREAM_EDITS=0
 CODEX_TELEGRAM_DIFF_MAX_CHARS=30000
 CODEX_TELEGRAM_FILE_PREVIEW_MAX_CHARS=12000

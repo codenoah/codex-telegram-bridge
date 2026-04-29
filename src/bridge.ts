@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { Bot, GrammyError } from "grammy";
+import type { CallbackQuery, Message, User } from "grammy/types";
 import WebSocket from "ws";
 import {
   BridgeState,
@@ -33,10 +35,11 @@ const CODEX_BRIDGE_CWD = process.env.CODEX_BRIDGE_CWD ?? process.cwd();
 const CODEX_MODEL = process.env.CODEX_MODEL || undefined;
 const CODEX_REASONING_EFFORT = process.env.CODEX_REASONING_EFFORT || undefined;
 const STREAM_EDITS = process.env.CODEX_TELEGRAM_STREAM_EDITS === "1";
-const SHOW_PROGRESS = process.env.CODEX_TELEGRAM_PROGRESS !== "0";
+const SHOW_PROGRESS = process.env.CODEX_TELEGRAM_PROGRESS === "1";
 const DIFF_MAX_CHARS = readPositiveInt(process.env.CODEX_TELEGRAM_DIFF_MAX_CHARS, 30000);
 const FILE_PREVIEW_MAX_CHARS = readPositiveInt(process.env.CODEX_TELEGRAM_FILE_PREVIEW_MAX_CHARS, 12000);
 const FILE_ALL_MAX_CHARS = readPositiveInt(process.env.CODEX_TELEGRAM_FILE_ALL_MAX_CHARS, 60000);
+const TELEGRAM_REQUEST_TIMEOUT_MS = readPositiveInt(process.env.CODEX_TELEGRAM_REQUEST_TIMEOUT_MS, 90000);
 
 if (!TELEGRAM_BOT_TOKEN) {
   throw new Error(`TELEGRAM_BOT_TOKEN is required. Set it in ${STATE.envFile}`);
@@ -44,101 +47,92 @@ if (!TELEGRAM_BOT_TOKEN) {
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonObject = { [key: string]: Json | undefined };
-type TelegramUpdate = {
-  update_id: number;
-  message?: TelegramMessage;
-  callback_query?: {
-    id: string;
-    from: TelegramUser;
-    message?: TelegramMessage;
-    data?: string;
-  };
-};
-type TelegramUser = {
-  id: number;
-  username?: string;
-  first_name?: string;
-};
-type TelegramMessage = {
-  message_id: number;
+type TelegramUser = User;
+type TelegramMessage = Message & {
   text?: string;
   caption?: string;
-  chat: { id: number; type: string };
+  chat: Message["chat"] & { type: string };
   from?: TelegramUser;
+};
+type TelegramCallbackQuery = CallbackQuery & {
+  data?: string;
+  message?: TelegramMessage;
 };
 
 class TelegramApi {
-  constructor(private readonly token: string) {}
-
-  async call<T = any>(method: string, payload: JsonObject = {}): Promise<T> {
-    let res: Response;
-    try {
-      res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch (error) {
-      throw sanitizeTelegramError(error, this.token);
-    }
-    const body = await res.json().catch(() => undefined) as { ok?: boolean; result?: T; description?: string } | undefined;
-    if (!res.ok || !body?.ok) {
-      throw new Error(`${method} failed: ${body?.description ?? res.statusText}`);
-    }
-    return body.result as T;
-  }
-
-  getUpdates(offset: number | undefined): Promise<TelegramUpdate[]> {
-    return this.call("getUpdates", {
-      offset,
-      timeout: 30,
-      allowed_updates: ["message", "callback_query"],
-    });
-  }
+  constructor(private readonly bot: Bot) {}
 
   async sendMessage(chatId: string, text: string, extra: JsonObject = {}): Promise<TelegramMessage[]> {
     const sent: TelegramMessage[] = [];
     for (const chunk of chunkText(text || "(empty)")) {
-      sent.push(await this.call<TelegramMessage>("sendMessage", {
-        chat_id: chatId,
-        text: chunk,
+      const message = await this.bot.api.sendMessage(chatId, chunk, {
         disable_web_page_preview: true,
-        ...extra,
-      }));
+        ...(extra as Record<string, unknown>),
+      } as any);
+      sent.push(message as TelegramMessage);
     }
     return sent;
   }
 
   editMessageText(chatId: string, messageId: number, text: string, extra: JsonObject = {}): Promise<TelegramMessage> {
-    return this.call("editMessageText", {
-      chat_id: chatId,
-      message_id: messageId,
-      text: text.slice(0, 4096) || "(empty)",
+    return this.bot.api.editMessageText(chatId, messageId, text.slice(0, 4096) || "(empty)", {
       disable_web_page_preview: true,
-      ...extra,
-    });
+      ...(extra as Record<string, unknown>),
+    } as any) as Promise<TelegramMessage>;
   }
 
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<true> {
-    return this.call("answerCallbackQuery", {
-      callback_query_id: callbackQueryId,
-      ...(text ? { text } : {}),
-    });
+    return this.bot.api.answerCallbackQuery(callbackQueryId, text ? { text } : undefined);
+  }
+
+  sendTyping(chatId: string): Promise<true> {
+    return this.bot.api.sendChatAction(chatId, "typing");
   }
 
   setReaction(chatId: string, messageId: number, emoji: string): Promise<true> {
-    return this.call("setMessageReaction", {
-      chat_id: chatId,
-      message_id: messageId,
-      reaction: [{ type: "emoji", emoji }],
-    });
+    return this.bot.api.setMessageReaction(chatId, messageId, [{ type: "emoji", emoji }] as any);
   }
 }
 
-function sanitizeTelegramError(error: unknown, token = TELEGRAM_BOT_TOKEN): Error {
-  const raw = error instanceof Error ? error.message : String(error);
+function sanitizeTelegramError(error: unknown, token = TELEGRAM_BOT_TOKEN, context?: string): Error {
+  const raw = [context, describeTelegramError(error)].filter(Boolean).join(": ");
   const redacted = token ? raw.split(token).join("<redacted-token>") : raw;
   return new Error(redacted);
+}
+
+function describeTelegramError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const base = error.name === "Error" ? error.message : `${error.name}: ${error.message}`;
+  const cause = describeErrorCause(error.cause);
+  return cause ? `${base} | cause: ${cause}` : base;
+}
+
+function describeErrorCause(cause: unknown, seen = new Set<unknown>()): string | undefined {
+  if (cause === undefined || cause === null) return undefined;
+  if (typeof cause !== "object") return String(cause);
+  if (seen.has(cause)) return "[circular cause]";
+  seen.add(cause);
+
+  const record = cause as Record<string, unknown>;
+  const prototypeName = Object.getPrototypeOf(cause)?.constructor?.name;
+  const name = typeof record.name === "string" ? record.name : typeof prototypeName === "string" ? prototypeName : "Error";
+  const message = typeof record.message === "string" && record.message !== name ? record.message : undefined;
+  const attrs = ["code", "errno", "syscall", "hostname", "address", "port"]
+    .map((key) => {
+      const value = record[key];
+      return value === undefined ? undefined : `${key}=${String(value)}`;
+    })
+    .filter((item): item is string => Boolean(item));
+  const nested = describeErrorCause(record.cause, seen);
+  return [name, message, attrs.length ? attrs.join(", ") : undefined, nested ? `cause: ${nested}` : undefined]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function logTelegramError(context: string, error: unknown, options: { ignoreMessageNotModified?: boolean } = {}): void {
+  const sanitized = sanitizeTelegramError(error);
+  if (options.ignoreMessageNotModified && /message is not modified/i.test(sanitized.message)) return;
+  console.error(`[${new Date().toISOString()}] Telegram ${context}: ${sanitized.message}`);
 }
 
 function readPositiveInt(value: string | undefined, fallback: number): number {
@@ -326,11 +320,15 @@ type LocalNotification = {
   source?: string;
 };
 
-const telegram = new TelegramApi(TELEGRAM_BOT_TOKEN);
+const bot = new Bot(TELEGRAM_BOT_TOKEN, {
+  client: { timeoutSeconds: Math.ceil(TELEGRAM_REQUEST_TIMEOUT_MS / 1000) },
+});
+const telegram = new TelegramApi(bot);
 const codex = new CodexClient();
 const telegramTurns = new Map<string, TelegramTurn>();
 const pendingApprovals = new Map<string, { request: any; text: string }>();
 const pendingSteers = new Map<string, PendingSteer>();
+const typingTimers = new Map<string, ReturnType<typeof setInterval>>();
 let lastTurnReport: TurnReport | undefined;
 
 let bridgeState = readBridgeState();
@@ -424,7 +422,8 @@ codex.onNotification = (message) => {
     const turn = telegramTurns.get(params.turn?.id);
     if (!turn) return;
     telegramTurns.delete(params.turn.id);
-    void finishTurn(turn, params.turn.status, params.turn.error);
+    void finishTurn(turn, params.turn.status, params.turn.error)
+      .catch((error) => logTelegramError("finish turn failed", error));
   }
 };
 
@@ -442,7 +441,7 @@ codex.onServerRequest = (request) => {
           { text: "Deny", callback_data: `ap:${key}:d` },
         ]],
       },
-    }).catch((error) => console.error(error));
+    }).catch((error) => logTelegramError("approval request send failed", error));
   }
 };
 
@@ -456,7 +455,8 @@ async function updateTurnMessage(turn: TelegramTurn, force = false): Promise<voi
   if (!force && now - turn.lastEditAt < 1200) return;
   turn.lastEditAt = now;
   const preview = renderWorkingTurn(turn);
-  await telegram.editMessageText(turn.chatId, turn.statusMessageId, preview, turnReplyMarkupExtra(turn)).catch(() => {});
+  await telegram.editMessageText(turn.chatId, turn.statusMessageId, preview, turnReplyMarkupExtra(turn))
+    .catch((error) => logTelegramError("working status edit failed", error, { ignoreMessageNotModified: true }));
 }
 
 function appendProgress(turnId: string | undefined, line: string | undefined, force = false): void {
@@ -509,64 +509,46 @@ function mergeChangedFiles(turn: TelegramTurn, files: string[]): void {
 }
 
 async function finishTurn(turn: TelegramTurn, status: string, error: any): Promise<void> {
+  stopTypingIndicator(turn.turnId);
   lastTurnReport = buildTurnReport(turn);
   if (status !== "completed") {
     const message = status === "interrupted" && turn.cancelRequested
       ? "Stopped current Codex turn."
       : error?.message ? `${status}: ${error.message}` : `Turn ${status}`;
-    const progress = renderProgress(turn);
     await telegram.editMessageText(
       turn.chatId,
       turn.statusMessageId,
-      progress ? `${progress}\n\n${message}` : message,
+      message,
       removeReplyMarkupExtra(),
-    ).catch(() => {});
+    ).catch((editError) => logTelegramError("finish status edit failed", editError, { ignoreMessageNotModified: true }));
     return;
   }
 
-  if (!turn.buffer.trim()) {
-    const finalText = renderFinalTurn(turn);
-    await telegram.editMessageText(
-      turn.chatId,
-      turn.statusMessageId,
-      finalText,
-      removeReplyMarkupExtra(),
-    ).catch(() => {});
-    return;
-  }
-
-  const chunks = chunkText(turn.buffer);
   const finalText = renderFinalTurn(turn);
-  if (finalText.length <= 3900) {
-    await telegram.editMessageText(turn.chatId, turn.statusMessageId, finalText, removeReplyMarkupExtra()).catch(async () => {
-      await telegram.editMessageText(turn.chatId, turn.statusMessageId, "Done.", removeReplyMarkupExtra()).catch(() => {});
-      await telegram.sendMessage(turn.chatId, finalText);
-    });
-    return;
+  const chunks = chunkText(finalText);
+  const [firstChunk = "Done.", ...remainingChunks] = chunks;
+  await telegram.editMessageText(turn.chatId, turn.statusMessageId, firstChunk, removeReplyMarkupExtra()).catch(async (editError) => {
+    logTelegramError("final response edit failed", editError, { ignoreMessageNotModified: true });
+    try {
+      await telegram.sendMessage(turn.chatId, firstChunk);
+    } catch (sendError) {
+      logTelegramError("final response send failed", sendError);
+    }
+  });
+  for (const chunk of remainingChunks) {
+    try {
+      await telegram.sendMessage(turn.chatId, chunk);
+    } catch (sendError) {
+      logTelegramError("final response chunk send failed", sendError);
+      break;
+    }
   }
-
-  const progress = renderProgress(turn);
-  const changes = renderChangeSummary(buildTurnReport(turn));
-  await telegram.editMessageText(
-    turn.chatId,
-    turn.statusMessageId,
-    [progress, changes, "Answer is long; sending it in parts."].filter(Boolean).join("\n\n"),
-    removeReplyMarkupExtra(),
-  ).catch(() => {});
-  for (const chunk of chunks) await telegram.sendMessage(turn.chatId, chunk);
 }
 
 function renderWorkingTurn(turn: TelegramTurn): string {
-  const progress = renderProgress(turn);
-  const parts = [
-    turn.cancelRequested ? "Stopping current Codex turn..." : "Codex is working...",
-    `cwd: ${basename(turn.cwd) || turn.cwd}`,
-    `thread: ${shortId(turn.threadId)}`,
-    `turn: ${shortId(turn.turnId)}`,
-  ];
-  if (progress) parts.push("", progress);
+  const parts = [turn.cancelRequested ? "Stopping current Codex turn..." : "Codex is working..."];
   if (STREAM_EDITS && turn.buffer.trim()) {
-    parts.push("", "Draft:", clip(turn.buffer.trim(), 1200));
+    parts.push("", clip(turn.buffer.trim(), 1200));
   }
   return clip(parts.join("\n"), 3900);
 }
@@ -584,21 +566,30 @@ function removeReplyMarkupExtra(): JsonObject {
 }
 
 function renderFinalTurn(turn: TelegramTurn): string {
-  const answer = turn.buffer.trim() || "Done.";
-  const progress = renderProgress(turn);
-  const changes = renderChangeSummary(buildTurnReport(turn));
-  const parts = [];
-  if (progress) parts.push(progress);
-  if (changes) parts.push(changes);
-  parts.push(answer);
-  return parts.join("\n\n");
+  return turn.buffer.trim() || "Done.";
 }
 
-function renderProgress(turn: TelegramTurn): string {
-  const progressLines = turn.progressLines ?? [];
-  if (!progressLines.length) return "";
-  const lines = progressLines.slice(-14).map((line) => `- ${line}`);
-  return `Progress:\n${lines.join("\n")}`;
+function startTypingIndicator(turn: TelegramTurn): void {
+  stopTypingIndicator(turn.turnId);
+  sendTypingIndicator(turn);
+  const timer = setInterval(() => sendTypingIndicator(turn), 4000);
+  unrefTimer(timer);
+  typingTimers.set(turn.turnId, timer);
+}
+
+function sendTypingIndicator(turn: TelegramTurn): void {
+  void telegram.sendTyping(turn.chatId).catch((error) => logTelegramError("typing indicator failed", error));
+}
+
+function stopTypingIndicator(turnId: string): void {
+  const timer = typingTimers.get(turnId);
+  if (timer) clearInterval(timer);
+  typingTimers.delete(turnId);
+}
+
+function stopAllTypingIndicators(): void {
+  for (const timer of typingTimers.values()) clearInterval(timer);
+  typingTimers.clear();
 }
 
 function buildTurnReport(turn: TelegramTurn): TurnReport {
@@ -616,48 +607,6 @@ function buildTurnReport(turn: TelegramTurn): TurnReport {
     diff,
     fileDiffs,
   };
-}
-
-function renderChangeSummary(report: TurnReport): string {
-  const files = report.changedFiles;
-  if (!files.length && !report.diff.trim()) return "";
-
-  const parts: string[] = [];
-  if (files.length) {
-    const shown = files.slice(0, 10).map((file) => `- ${file}`);
-    if (files.length > shown.length) shown.push(`- ... ${files.length - shown.length} more`);
-    parts.push(`Workspace changes:\n${shown.join("\n")}`);
-  }
-
-  const preview = renderDiffPreview(report, 70, 1600);
-  if (preview) parts.push(preview);
-  return parts.join("\n\n");
-}
-
-function renderDiffPreview(report: TurnReport, maxLines: number, maxChars: number): string {
-  const diff = report.diff.trim();
-  if (!diff) return "";
-
-  const lines = diff.split("\n");
-  let clippedLines = lines.slice(0, maxLines);
-  let body = clippedLines.join("\n");
-  let truncated = lines.length > maxLines;
-  if (body.length > maxChars) {
-    body = body.slice(0, maxChars);
-    truncated = true;
-  }
-
-  const parts = [`Diff preview:\n${body}`];
-  if (truncated) {
-    const path = report.changedFiles[0];
-    parts.push("... truncated");
-    if (path) {
-      parts.push(`Use:\n/diff ${path}\n/file ${path}`);
-    } else {
-      parts.push("Use /diff to view the full diff.");
-    }
-  }
-  return parts.join("\n\n");
 }
 
 function parseUnifiedDiff(diff: string): { files: string[]; fileDiffs: Map<string, string> } {
@@ -915,6 +864,10 @@ async function changeCwd(chatId: string, rawPath: string): Promise<void> {
 }
 
 async function sendLogs(chatId: string): Promise<void> {
+  if (!SHOW_PROGRESS) {
+    await telegram.sendMessage(chatId, "Progress logging is disabled.");
+    return;
+  }
   const activeTurn = bridgeState.activeTurnId ? telegramTurns.get(bridgeState.activeTurnId) : undefined;
   const lines = activeTurn?.progressLines?.length ? activeTurn.progressLines : lastTurnReport?.progressLines;
   if (!lines?.length) {
@@ -1108,7 +1061,6 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       "/new starts a fresh thread.",
       "/cancel stops the current Codex turn.",
       "/cwd <path> changes the project directory for the next thread.",
-      "/logs shows recent progress.",
       "/diff [path] shows the last turn diff or current git diff.",
       "/file <path> sends a file preview.",
       "",
@@ -1215,6 +1167,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
 
   const status = await telegram.sendMessage(chatId, "Codex is working...");
   const statusMessage = status[0];
+  void telegram.sendTyping(chatId).catch((error) => logTelegramError("typing indicator failed", error));
 
   const response = await codex.request("turn/start", {
     threadId,
@@ -1239,12 +1192,12 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     lastEditAt: 0,
   };
   telegramTurns.set(turnId, turn);
+  startTypingIndicator(turn);
   await updateTurnMessage(turn, true);
 }
 
-async function handleCallback(update: TelegramUpdate): Promise<void> {
-  const callback = update.callback_query;
-  if (!callback?.data) return;
+async function handleCallback(callback: TelegramCallbackQuery): Promise<void> {
+  if (!callback.data) return;
   const senderId = String(callback.from.id);
   if (!isAllowlisted(senderId)) {
     await telegram.answerCallbackQuery(callback.id, "Not authorized.").catch(() => {});
@@ -1369,7 +1322,8 @@ function checkApprovals(): void {
       const file = join(STATE.approvedDir, senderId);
       const chatId = readFileSync(file, "utf8").trim() || senderId;
       rmSync(file);
-      void telegram.sendMessage(chatId, "Paired. Your Telegram messages now reach Codex.").catch(() => {});
+      void telegram.sendMessage(chatId, "Paired. Your Telegram messages now reach Codex.")
+        .catch((error) => logTelegramError("pairing notification send failed", error));
     }
   } catch {
     // Best-effort notification only.
@@ -1421,28 +1375,94 @@ async function checkLocalNotifications(): Promise<void> {
   }
 }
 
-async function pollTelegram(): Promise<void> {
-  let offset = bridgeState.telegramOffset;
-  for (;;) {
-    checkApprovals();
+let shuttingDown = false;
+let approvalTimer: ReturnType<typeof setInterval> | undefined;
+let notificationTimer: ReturnType<typeof setInterval> | undefined;
+let checkingNotifications = false;
+
+function configureTelegramHandlers(): void {
+  bot.on("message", async (ctx) => {
+    await handleMessage(ctx.message as TelegramMessage);
+  });
+  bot.on("callback_query:data", async (ctx) => {
+    await handleCallback(ctx.callbackQuery as TelegramCallbackQuery);
+  });
+  bot.catch((error) => {
+    logTelegramError("handler error", error.error);
+  });
+}
+
+function startPeriodicChecks(): void {
+  checkApprovals();
+  runLocalNotificationCheck();
+  approvalTimer = setInterval(checkApprovals, 5000);
+  notificationTimer = setInterval(runLocalNotificationCheck, 5000);
+  unrefTimer(approvalTimer);
+  unrefTimer(notificationTimer);
+}
+
+function runLocalNotificationCheck(): void {
+  if (checkingNotifications) return;
+  checkingNotifications = true;
+  void checkLocalNotifications()
+    .catch((error) => logTelegramError("local notification check failed", error))
+    .finally(() => {
+      checkingNotifications = false;
+    });
+}
+
+function unrefTimer(timer: ReturnType<typeof setInterval>): void {
+  if (typeof timer === "object" && "unref" in timer) timer.unref();
+}
+
+function stopPeriodicChecks(): void {
+  if (approvalTimer) clearInterval(approvalTimer);
+  if (notificationTimer) clearInterval(notificationTimer);
+}
+
+async function startTelegram(): Promise<void> {
+  configureTelegramHandlers();
+  startPeriodicChecks();
+
+  for (let attempt = 1; ; attempt++) {
     try {
-      await checkLocalNotifications();
-      const updates = await telegram.getUpdates(offset);
-      for (const update of updates) {
-        offset = update.update_id + 1;
-        persistState({ telegramOffset: offset });
-        if (update.callback_query) await handleCallback(update);
-        if (update.message) await handleMessage(update.message);
-      }
+      await bot.start({
+        allowed_updates: ["message", "callback_query"],
+        timeout: 30,
+        onStart: (info) => {
+          attempt = 0;
+          console.error(`codex telegram bridge: polling as @${info.username}`);
+        },
+      });
+      return;
     } catch (error) {
-      console.error(sanitizeTelegramError(error));
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      if (shuttingDown) return;
+      const isConflict = error instanceof GrammyError && error.error_code === 409;
+      if (isConflict && attempt >= 8) {
+        logTelegramError("polling conflict", error);
+        throw new Error("Telegram polling conflict persisted. Another bridge instance may be using this bot token.");
+      }
+      const delay = Math.min(1000 * attempt, 15000);
+      const context = isConflict ? "polling conflict" : "polling failed";
+      logTelegramError(`${context}; retrying in ${Math.round(delay / 1000)}s`, error);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 }
 
-process.on("SIGINT", () => process.exit(0));
-process.on("SIGTERM", () => process.exit(0));
+function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  stopPeriodicChecks();
+  stopAllTypingIndicators();
+  setTimeout(() => process.exit(0), 2000).unref();
+  void Promise.resolve(bot.stop())
+    .catch((error) => logTelegramError("stop failed", error))
+    .finally(() => process.exit(0));
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 process.on("exit", () => {
   if (existsSync(STATE.bridgePidFile)) {
     try {
@@ -1456,6 +1476,9 @@ process.on("exit", () => {
 
 console.error(`codex telegram bridge: state=${STATE.stateDir}`);
 console.error(`codex telegram bridge: app-server=${CODEX_APP_SERVER_URL}`);
-console.error(`codex telegram bridge: cwd=${CODEX_BRIDGE_CWD}`);
-await codex.connect();
-await pollTelegram();
+console.error(`codex telegram bridge: cwd=${currentCwd()}`);
+console.error(`codex telegram bridge: pid=${process.pid} telegram=grammy`);
+void codex.connect().catch((error) => {
+  console.error(`[${new Date().toISOString()}] Codex app-server initial connection failed: ${clip(oneLine(String((error as Error).message ?? error)), 500)}`);
+});
+await startTelegram();
