@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.3
+
+- Send final Telegram responses as new messages so completion notifications fire.
+- Delete the transient `Codex is working...` status message when a turn completes.
+
+## 0.1.2
+
+- Switched Telegram polling to `grammy`.
+- Simplified turn updates so Telegram chats show final answers by default.
+- Added typing indicators while Codex is working.
+- Hid verbose progress logging unless `CODEX_TELEGRAM_PROGRESS=1` is enabled.
+
 ## 0.1.1
 
 - Added bridge-routed local notifications with `codex-tg notify`.

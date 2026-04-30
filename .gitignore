@@ -12,6 +12,7 @@ telegram-bridge/
 
 # Local application/supporting notes
 docs/jetbrains-oss-application.md
+HANDOFF.md
 
 *.tmp
 *.pid

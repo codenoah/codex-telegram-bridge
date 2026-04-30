@@ -48,6 +48,9 @@ class TelegramApi {
             ...extra,
         });
     }
+    deleteMessage(chatId, messageId) {
+        return this.bot.api.deleteMessage(chatId, messageId);
+    }
     answerCallbackQuery(callbackQueryId, text) {
         return this.bot.api.answerCallbackQuery(callbackQueryId, text ? { text } : undefined);
     }
@@ -432,22 +435,17 @@ async function finishTurn(turn, status, error) {
     }
     const finalText = renderFinalTurn(turn);
     const chunks = chunkText(finalText);
-    const [firstChunk = "Done.", ...remainingChunks] = chunks;
-    await telegram.editMessageText(turn.chatId, turn.statusMessageId, firstChunk, removeReplyMarkupExtra()).catch(async (editError) => {
-        logTelegramError("final response edit failed", editError, { ignoreMessageNotModified: true });
-        try {
-            await telegram.sendMessage(turn.chatId, firstChunk);
-        }
-        catch (sendError) {
-            logTelegramError("final response send failed", sendError);
-        }
+    await telegram.deleteMessage(turn.chatId, turn.statusMessageId).catch(async (deleteError) => {
+        logTelegramError("working status delete failed", deleteError);
+        await telegram.editMessageText(turn.chatId, turn.statusMessageId, "Done.", removeReplyMarkupExtra())
+            .catch((editError) => logTelegramError("working status clear failed", editError, { ignoreMessageNotModified: true }));
     });
-    for (const chunk of remainingChunks) {
+    for (const chunk of chunks.length ? chunks : ["Done."]) {
         try {
             await telegram.sendMessage(turn.chatId, chunk);
         }
         catch (sendError) {
-            logTelegramError("final response chunk send failed", sendError);
+            logTelegramError("final response send failed", sendError);
             break;
         }
     }
